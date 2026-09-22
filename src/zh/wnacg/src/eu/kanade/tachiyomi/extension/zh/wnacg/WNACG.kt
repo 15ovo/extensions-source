@@ -1,5 +1,7 @@
 package eu.kanade.tachiyomi.extension.zh.wnacg
 
+import androidx.preference.EditTextPreference
+import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
 import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.model.Filter
@@ -30,7 +32,19 @@ abstract class WNACG :
 
     private val preferences = getPreferences { preferenceMigration() }
 
-    override val baseUrl get() = preferences.baseUrl
+    // 优先级：自定义域名 > 镜像列表 > 自动更新的默认域名
+    override val baseUrl: String
+        get() {
+            val customUrl = preferences.getString("overrideBaseUrl", "")?.trim()
+            if (!customUrl.isNullOrBlank()) {
+                return customUrl.removeSuffix("/")
+            }
+            val mirrorUrl = preferences.getString("mirrorBaseUrl", "")?.trim()
+            if (!mirrorUrl.isNullOrBlank()) {
+                return mirrorUrl.removeSuffix("/")
+            }
+            return preferences.baseUrl
+        }
 
     private val updateUrlInterceptor = UpdateUrlInterceptor(preferences)
 
@@ -177,6 +191,41 @@ abstract class WNACG :
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
         getPreferencesInternal(screen.context, preferences, updateUrlInterceptor.isUpdated)
             .forEach(screen::addPreference)
+
+        // --- 添加自定义域名输入框 ---
+        EditTextPreference(screen.context).apply {
+            key = "overrideBaseUrl"
+            title = "自定义域名"
+            summary = "留空则使用镜像或自动更新的默认域名。例如：https://example.com"
+            dialogTitle = "自定义域名"
+            dialogMessage = "请输入完整的域名（包含 http:// 或 https://）"
+            setDefaultValue("")
+            setOnPreferenceChangeListener { _, newValue ->
+                val url = newValue.toString().trim()
+                summary = if (url.isBlank()) {
+                    "留空则使用镜像或自动更新的默认域名。"
+                } else {
+                    "当前使用：$url"
+                }
+                true
+            }
+        }.also(screen::addPreference)
+
+        // --- 添加镜像选择列表 ---
+        val mirrorList = listOf(
+            "https://www.wnacg.com",
+            "https://www.wnacg.org",
+            "https://www.wnacg.net",
+            "https://www.wnacg.cc",
+        )
+        ListPreference(screen.context).apply {
+            key = "mirrorBaseUrl"
+            title = "镜像地址"
+            entries = mirrorList.toTypedArray()
+            entryValues = mirrorList.toTypedArray()
+            summary = "选择备用域名"
+            setDefaultValue(mirrorList.first())
+        }.also(screen::addPreference)
     }
 
     private fun mangaListParse(response: Response): MangasPage {
