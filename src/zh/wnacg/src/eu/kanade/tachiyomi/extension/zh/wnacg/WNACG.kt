@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.extension.zh.wnacg
 
+import androidx.preference.EditTextPreference
 import androidx.preference.PreferenceScreen
 import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.model.Filter
@@ -30,8 +31,15 @@ abstract class WNACG :
 
     private val preferences = getPreferences { preferenceMigration() }
 
-    // 直接使用框架自带的自动更新逻辑，不再覆盖它
-    override val baseUrl get() = preferences.baseUrl
+    // 优先级：自定义域名 > 自动更新的默认域名
+    override val baseUrl: String
+        get() {
+            val customUrl = preferences.getString("overrideBaseUrl", "")?.trim()
+            if (!customUrl.isNullOrBlank()) {
+                return customUrl.removeSuffix("/")
+            }
+            return preferences.baseUrl
+        }
 
     private val updateUrlInterceptor = UpdateUrlInterceptor(preferences)
 
@@ -172,16 +180,35 @@ abstract class WNACG :
     )
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
-        // 直接修改自动生成的设置项，把“网址”改为“镜像地址”
+        // 1. 自动生成的设置项（保留自动更新逻辑，把“网址”改名为“镜像地址”）
         getPreferencesInternal(screen.context, preferences, updateUrlInterceptor.isUpdated)
             .forEach { pref ->
                 val keyText = pref.key ?: ""
                 if (keyText.contains("baseurl", ignoreCase = true)) {
                     pref.title = "镜像地址"
-                    pref.summary = "自动更新，可手动修改。当前使用：${preferences.baseUrl}"
+                    pref.summary = "自动更新，当前使用：${preferences.baseUrl}"
                 }
                 screen.addPreference(pref)
             }
+
+        // 2. 添加自定义域名输入框（优先级最高）
+        EditTextPreference(screen.context).apply {
+            key = "overrideBaseUrl"
+            title = "自定义域名"
+            summary = "留空则使用上方镜像地址"
+            dialogTitle = "自定义域名"
+            dialogMessage = "完整的域名（包含http://或https://）"
+            setDefaultValue("")
+            setOnPreferenceChangeListener { _, newValue ->
+                val url = newValue.toString().trim()
+                summary = if (url.isBlank()) {
+                    "留空则使用上方镜像地址。"
+                } else {
+                    "当前使用：$url"
+                }
+                true
+            }
+        }.also(screen::addPreference)
     }
 
     private fun mangaListParse(response: Response): MangasPage {
