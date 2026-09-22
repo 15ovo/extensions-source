@@ -48,7 +48,12 @@ abstract class WNACG :
     }
 
     override fun Headers.Builder.configureHeaders() = apply {
-        set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0")
+        val userAgent = preferences.getString("overrideUserAgent", "")?.trim()
+        if (!userAgent.isNullOrBlank()) {
+            set("User-Agent", userAgent)
+        } else {
+            set("User-Agent", DEFAULT_USER_AGENT)
+        }
         set("Sec-Fetch-Mode", "no-cors")
         set("Sec-Fetch-Site", "cross-site")
     }
@@ -180,18 +185,24 @@ abstract class WNACG :
     )
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
-        // 1. 自动生成的设置项（保留自动更新逻辑，把“网址”改名为“镜像地址”）
-        getPreferencesInternal(screen.context, preferences, updateUrlInterceptor.isUpdated)
-            .forEach { pref ->
-                val keyText = pref.key ?: ""
-                if (keyText.contains("baseurl", ignoreCase = true)) {
-                    pref.title = "镜像地址"
-                    pref.summary = "自动更新，当前使用：${preferences.baseUrl}"
-                }
-                screen.addPreference(pref)
-            }
+        // 1. 拿到自动生成的设置
+        val defaultPreferences = getPreferencesInternal(screen.context, preferences, updateUrlInterceptor.isUpdated)
 
-        // 2. 添加自定义域名输入框（优先级最高）
+        // 2. 找出自动生成的“网址”，改名为“镜像地址”
+        val mirrorPref = defaultPreferences.find { it.key?.contains("baseurl", ignoreCase = true) == true }
+        mirrorPref?.title = "镜像地址"
+        mirrorPref?.summary = "自动更新，当前使用：${preferences.baseUrl}"
+
+        // 3. 先加其他配置（标题屏蔽、黑名单等）
+        defaultPreferences.filterNot { it.key?.contains("baseurl", ignoreCase = true) == true }
+            .forEach(screen::addPreference)
+
+        // 4. 加“镜像地址”
+        if (mirrorPref != null) {
+            screen.addPreference(mirrorPref)
+        }
+
+        // 5. 加“自定义域名”
         EditTextPreference(screen.context).apply {
             key = "overrideBaseUrl"
             title = "自定义域名"
@@ -206,6 +217,22 @@ abstract class WNACG :
                 } else {
                     "当前使用：$url"
                 }
+                true
+            }
+        }.also(screen::addPreference)
+
+        // 6. 加“自定义 User-Agent”
+        EditTextPreference(screen.context).apply {
+            key = "overrideUserAgent"
+            title = "自定义 User-Agent"
+            summary = "默认：$DEFAULT_USER_AGENT"
+            dialogTitle = "自定义 User-Agent"
+            dialogMessage = "默认：$DEFAULT_USER_AGENT"
+            setDefaultValue(DEFAULT_USER_AGENT)
+            setOnPreferenceChangeListener { _, newValue ->
+                val ua = newValue.toString().trim()
+                val effective = if (ua.isBlank()) DEFAULT_USER_AGENT else ua
+                summary = "当前使用：$effective"
                 true
             }
         }.also(screen::addPreference)
@@ -277,6 +304,9 @@ abstract class WNACG :
     }
 
     companion object {
+        private const val DEFAULT_USER_AGENT =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0"
+
         private val pageImageRegex = Regex(
             """//[^\s"'\\]+\.(?:jpeg|jpg|png|webp|gif)(?:\?[^\s"'\\]*)?""",
             RegexOption.IGNORE_CASE,
