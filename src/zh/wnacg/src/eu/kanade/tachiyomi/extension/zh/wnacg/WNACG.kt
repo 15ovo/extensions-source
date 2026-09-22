@@ -191,7 +191,7 @@ abstract class WNACG :
         // 2. 找出自动生成的“网址”，改名为“镜像地址”
         val mirrorPref = defaultPreferences.find { it.key?.contains("baseurl", ignoreCase = true) == true }
         mirrorPref?.title = "镜像地址"
-        mirrorPref?.summary = "自动更新，当前使用：${preferences.baseUrl}"
+        mirrorPref?.summary = "自动拉取，当前使用：${preferences.baseUrl}"
 
         // 3. 先加其他配置（标题屏蔽、黑名单等）
         defaultPreferences.filterNot { it.key?.contains("baseurl", ignoreCase = true) == true }
