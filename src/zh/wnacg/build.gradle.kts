@@ -8,7 +8,7 @@ keiyoushi {
     name = "WNACG"
     versionCode = 0
     contentWarning = ContentWarning.NSFW
-    libVersion = "1.6"
+    libVersion = "1.6.2"
 
     source {
         name = "紳士漫畫"
